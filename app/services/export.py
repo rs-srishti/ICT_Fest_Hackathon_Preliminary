@@ -1,9 +1,7 @@
 """CSV export of bookings for administrators."""
 import csv
 import io
-
 from sqlalchemy.orm import Session
-
 from ..models import Booking, Room
 from ..timeutils import iso_utc
 
@@ -19,11 +17,17 @@ EXPORT_HEADER = [
 ]
 
 
-def fetch_bookings_raw(db: Session, room_id: int) -> list[Booking]:
-    """Load every booking for a single room, ordered by id."""
+def fetch_bookings_raw(db: Session, org_id: int, room_id: int) -> list[Booking]:
+    """Load every booking for a single room within the given org, ordered by id.
+
+    Joined against Room and filtered by org_id so a caller cannot pull
+    bookings for a room belonging to a different organization by simply
+    passing that room's id (IDOR).
+    """
     return (
         db.query(Booking)
-        .filter(Booking.room_id == room_id)
+        .join(Room)
+        .filter(Room.org_id == org_id, Booking.room_id == room_id)
         .order_by(Booking.id.asc())
         .all()
     )
@@ -47,7 +51,7 @@ def generate_export(
 ) -> str:
     if include_all:
         if room_id is not None:
-            rows = fetch_bookings_raw(db, room_id)
+            rows = fetch_bookings_raw(db, org_id, room_id)
         else:
             rows = _fetch_scoped(db, org_id, None, None)
     else:
